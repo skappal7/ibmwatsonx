@@ -1,0 +1,4 @@
+streamlit
+pandas
+requests
+conversation_analytics_toolkit
