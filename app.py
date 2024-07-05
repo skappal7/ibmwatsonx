@@ -22,9 +22,19 @@ def fetch_data():
     workspace_response = requests.get(workspace_url, auth=auth)
     workspace = workspace_response.json()
 
+    # Ensure workspace_id exists in the workspace object
+    if 'workspace_id' not in workspace:
+        st.error("workspace_id not found in the workspace data")
+        st.stop()
+
     # Fetch logs
     logs_response = requests.get(logs_url, auth=auth)
     logs = logs_response.json()
+
+    # Check if 'logs' is in the response
+    if 'logs' not in logs:
+        st.error("'logs' key not found in the logs data")
+        st.stop()
 
     return workspace, pd.DataFrame.from_records(logs['logs'])
 
