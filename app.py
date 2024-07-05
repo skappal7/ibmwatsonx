@@ -16,40 +16,45 @@ base_url = f'https://api.us-south.assistant.watson.cloud.ibm.com/instances/{inst
 assistant_url = f'{base_url}/assistants/{assistant_id}?version={version}'
 logs_url = f'{base_url}/assistants/{assistant_id}/logs?version={version}'
 
-# Function to fetch data
 @st.cache_data
 def fetch_data():
     # Fetch assistant details
     assistant_response = requests.get(assistant_url, auth=auth)
     assistant = assistant_response.json()
     
-    # Print the response for debugging
     print("Assistant Response:")
     print(json.dumps(assistant, indent=2))
+
+    if 'error' in assistant:
+        st.error(f"Error fetching assistant details: {assistant['error']}")
+        st.stop()
 
     # Fetch logs
     logs_response = requests.get(logs_url, auth=auth)
     logs = logs_response.json()
     
-    # Print the logs response for debugging
     print("Logs Response:")
     print(json.dumps(logs, indent=2))
 
+    if 'error' in logs:
+        st.error(f"Error fetching logs: {logs['error']}")
+        st.stop()
+
     # Check if 'logs' is in the response
     if 'logs' not in logs:
-        st.error("'logs' key not found in the logs data")
-        st.stop()
+        st.warning("No 'logs' key found in the logs data. The response structure might have changed or there might be no logs available.")
+        st.write("API Response for logs:")
+        st.json(logs)
+        return assistant, pd.DataFrame()  # Return an empty DataFrame if no logs
 
     return assistant, pd.DataFrame.from_records(logs['logs'])
 
-# Prepare data
 def prepare_data(assistant, df_logs):
     assistant_skills = wa_assistant_skills.WA_Assistant_Skills()
     assistant_skills.add_skill(assistant["assistant_id"], assistant)
     df_logs_canonical = transformation.to_canonical_WA_v2(df_logs, assistant_skills, include_nodes_visited_str_types=True, include_context=True)
     return df_logs_canonical
 
-# Visualize user journeys and abandonments
 def visualize_user_journeys(df_logs_canonical):
     st.header("Visualizing User Journeys and Abandonments")
     turn_based_path_flows = analysis.aggregate_flows(df_logs_canonical, mode="turn-based", on_column="turn_label", max_depth=400, trim_reroutes=False)
@@ -66,7 +71,6 @@ def visualize_user_journeys(df_logs_canonical):
     jsondata = json.loads(turn_based_path_flows.to_json(orient='records'))
     st.graphviz_chart(visualization.draw_flowchart(config, jsondata))
 
-# Analyze abandoned conversations
 def analyze_abandonments(df_logs_canonical):
     st.header("Analyzing Abandoned Conversations")
     st.subheader("Conversation Transcripts")
@@ -76,7 +80,6 @@ def analyze_abandonments(df_logs_canonical):
     config = {'debugger': True}
     st.graphviz_chart(visualization.draw_transcript(config, dfc))
 
-# Identify keywords at point of abandonment
 def identify_keywords_abandonment(df_logs_canonical):
     st.header("Identify Keywords at Point of Abandonment")
     milestone_selection = {"path": ["Appointment scheduling start", "Schedule time", "Enter zip code", "Branch selection"]}
@@ -85,7 +88,6 @@ def identify_keywords_abandonment(df_logs_canonical):
     config = {'flattened': True, 'width': 800, 'height': 500}
     st.graphviz_chart(visualization.draw_wordpackchart(config, data))
 
-# Streamlit App Layout
 def main():
     st.title("IBM Watson Assistant Dialog Flow Analysis")
     st.sidebar.header("Navigation")
@@ -94,17 +96,33 @@ def main():
     
     try:
         assistant, df_logs = fetch_data()
-        df_logs_canonical = prepare_data(assistant, df_logs)
+        
+        if df_logs.empty:
+            st.warning("No log data available. Some features may not work.")
+        else:
+            df_logs_canonical = prepare_data(assistant, df_logs)
         
         if choice == "Data Overview":
             st.subheader("Data Overview")
-            st.write(df_logs.head())
+            if df_logs.empty:
+                st.write("No log data available.")
+            else:
+                st.write(df_logs.head())
         elif choice == "Visualize User Journeys":
-            visualize_user_journeys(df_logs_canonical)
+            if df_logs.empty:
+                st.write("No log data available for visualization.")
+            else:
+                visualize_user_journeys(df_logs_canonical)
         elif choice == "Analyze Abandonments":
-            analyze_abandonments(df_logs_canonical)
+            if df_logs.empty:
+                st.write("No log data available for abandonment analysis.")
+            else:
+                analyze_abandonments(df_logs_canonical)
         elif choice == "Identify Keywords":
-            identify_keywords_abandonment(df_logs_canonical)
+            if df_logs.empty:
+                st.write("No log data available for keyword identification.")
+            else:
+                identify_keywords_abandonment(df_logs_canonical)
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
         st.error("Please check the console for more detailed error information.")
