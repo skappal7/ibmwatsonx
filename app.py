@@ -7,41 +7,45 @@ from conversation_analytics_toolkit import wa_assistant_skills, transformation, 
 # Set up your credentials and URLs
 api_key = 'pudoZJoHCNn9ivItgn0zDAfAJIdumm109ZFiN2Y2o0b5'
 instance_id = '13e7edfa-8ca0-4aa2-a8f5-fff9eb761ba6'
-workspace_id = 'c41206c0-11dc-4d2b-afe5-25feea74d7fc'
-version = '2021-06-14'
+assistant_id = '07ae41ec-e775-49c9-818e-298e430e7dc3'
+version = '2023-05-01'
 auth = ('apikey', api_key)
 
 # URLs
-workspace_url = f'https://api.us-south.assistant.watson.cloud.ibm.com/instances/{instance_id}/v1/workspaces/{workspace_id}?version={version}'
-logs_url = f'https://api.us-south.assistant.watson.cloud.ibm.com/instances/{instance_id}/v1/workspaces/{workspace_id}/logs?version={version}'
+base_url = f'https://api.us-south.assistant.watson.cloud.ibm.com/instances/{instance_id}/v2'
+assistant_url = f'{base_url}/assistants/{assistant_id}?version={version}'
+logs_url = f'{base_url}/assistants/{assistant_id}/logs?version={version}'
 
 # Function to fetch data
 @st.cache_data
 def fetch_data():
-    # Fetch workspace
-    workspace_response = requests.get(workspace_url, auth=auth)
-    workspace = workspace_response.json()
-
-    # Ensure workspace_id exists in the workspace object
-    if 'workspace_id' not in workspace:
-        st.error("workspace_id not found in the workspace data")
-        st.stop()
+    # Fetch assistant details
+    assistant_response = requests.get(assistant_url, auth=auth)
+    assistant = assistant_response.json()
+    
+    # Print the response for debugging
+    print("Assistant Response:")
+    print(json.dumps(assistant, indent=2))
 
     # Fetch logs
     logs_response = requests.get(logs_url, auth=auth)
     logs = logs_response.json()
+    
+    # Print the logs response for debugging
+    print("Logs Response:")
+    print(json.dumps(logs, indent=2))
 
     # Check if 'logs' is in the response
     if 'logs' not in logs:
         st.error("'logs' key not found in the logs data")
         st.stop()
 
-    return workspace, pd.DataFrame.from_records(logs['logs'])
+    return assistant, pd.DataFrame.from_records(logs['logs'])
 
 # Prepare data
-def prepare_data(workspace, df_logs):
+def prepare_data(assistant, df_logs):
     assistant_skills = wa_assistant_skills.WA_Assistant_Skills()
-    assistant_skills.add_skill(workspace["workspace_id"], workspace)
+    assistant_skills.add_skill(assistant["assistant_id"], assistant)
     df_logs_canonical = transformation.to_canonical_WA_v2(df_logs, assistant_skills, include_nodes_visited_str_types=True, include_context=True)
     return df_logs_canonical
 
@@ -88,18 +92,22 @@ def main():
     options = ["Data Overview", "Visualize User Journeys", "Analyze Abandonments", "Identify Keywords"]
     choice = st.sidebar.radio("Go to", options)
     
-    workspace, df_logs = fetch_data()
-    df_logs_canonical = prepare_data(workspace, df_logs)
-    
-    if choice == "Data Overview":
-        st.subheader("Data Overview")
-        st.write(df_logs.head())
-    elif choice == "Visualize User Journeys":
-        visualize_user_journeys(df_logs_canonical)
-    elif choice == "Analyze Abandonments":
-        analyze_abandonments(df_logs_canonical)
-    elif choice == "Identify Keywords":
-        identify_keywords_abandonment(df_logs_canonical)
+    try:
+        assistant, df_logs = fetch_data()
+        df_logs_canonical = prepare_data(assistant, df_logs)
+        
+        if choice == "Data Overview":
+            st.subheader("Data Overview")
+            st.write(df_logs.head())
+        elif choice == "Visualize User Journeys":
+            visualize_user_journeys(df_logs_canonical)
+        elif choice == "Analyze Abandonments":
+            analyze_abandonments(df_logs_canonical)
+        elif choice == "Identify Keywords":
+            identify_keywords_abandonment(df_logs_canonical)
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        st.error("Please check the console for more detailed error information.")
 
 if __name__ == '__main__':
     main()
